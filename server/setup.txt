@@ -1,0 +1,11 @@
+1. SETUP VENV: ONCE
+python3 -m venv venv
+
+2. LAUNCH VENV: ALWAYS
+.\venv\Scripts\Activate.ps1
+
+3. INSTALL LIBS: ONCE
+pip install "fastapi[all]" "python-socketio[asgi]" uvicorn
+
+4. RUN SERVER: ALWAYS
+python app.py
