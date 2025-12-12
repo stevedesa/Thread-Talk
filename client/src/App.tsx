@@ -1,9 +1,6 @@
 // ============================================================
 // React & Socket.io Imports
 // ============================================================
-// useEffect / useState — React state and lifecycle
-// useRef — reference to DOM nodes (for scroll control)
-// useCallback — memoized function
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
 import './index.css';
