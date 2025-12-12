@@ -29,7 +29,6 @@ function App() {
   const [userToAdd, setUserToAdd] = useState('');
 
   // Refs
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
   // auto-scroll chat to bottom
@@ -64,7 +63,7 @@ function App() {
       const g: Group = { gid: group.gid, name: group.name, members: group.members || [] };
       setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
     });
-    
+
     socket.on('member_added', (data: { group: any }) => {
       if (data.group) {
         const g: Group = { gid: data.group.gid, name: data.group.name, members: data.group.members || [] };
@@ -72,16 +71,12 @@ function App() {
       }
     });
     
-    socket.on('group_joined', (group: any) => {
-      const g: Group = { gid: group.gid, name: group.name, members: group.members || [] };
-      setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
-    });
-    
     return () => {
       // remove listeners we added
       socket.off('connect');
       socket.off('receive_message');
       socket.off('group_created');
+      socket.off('member_added');
     };
   }, [activeChat, username, scrollToBottom]);
 
@@ -145,7 +140,6 @@ function App() {
   
     socket.emit('send_message', payload);
     setMessage('');
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
   const createGroup = () => {
@@ -160,24 +154,9 @@ function App() {
     setUserToAdd('');
   };
 
-  // textarea auto resize
   const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value);
-    const ta = textareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`; // cap height
   };
-
-  // handle keydown: Enter send, Shift+Enter newline
-  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
-
-  // --- Render ---
 
   if (!isLoggedIn) {
     return (
@@ -304,6 +283,24 @@ function App() {
                   {activeChat.type === 'group' ? `Group: ${myGroups[activeChat.id]?.name}` : `Chat: ${activeChat.id}`}
                 </h3>
               </div>
+
+              {/* Add User to Group */}
+              {activeChat.type === 'group' && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span>Add user:</span>
+                  <input
+                    className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
+                    value={userToAdd}
+                    onChange={(e) => setUserToAdd(e.target.value)}
+                  />
+                  <button
+                    onClick={addUserToGroup}
+                    className="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Chat History */}
@@ -331,11 +328,10 @@ function App() {
             {/* Input Box */}
             <div className="mt-4 flex gap-3 items-end">
               <textarea
-                ref={textareaRef}
                 className="bg-gray-700 border border-gray-600 text-gray-100 rounded-lg px-3 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none overflow-hidden max-h-48"
                 value={message}
-                onChange={handleTextareaInput}
-                onKeyDown={handleTextareaKeyDown}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDownCapture={(e) => {if(e.key === 'Enter') sendMessage()}}
                 placeholder="Message... "
                 rows={1}
                 style={{ minHeight: 40 }}
@@ -348,24 +344,6 @@ function App() {
                 Send
               </button>
             </div>
-
-            {/* Add User to Group */}
-            {activeChat.type === 'group' && (
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                <span>Add user:</span>
-                <input
-                  className="border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-900"
-                  value={userToAdd}
-                  onChange={(e) => setUserToAdd(e.target.value)}
-                />
-                <button
-                  onClick={addUserToGroup}
-                  className="bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  Add
-                </button>
-              </div>
-            )}
           </>
         ) : (
           <div className="text-gray-400 text-center mt-20 text-lg">Select a chat to begin</div>

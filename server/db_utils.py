@@ -52,7 +52,7 @@ def _get_chat_filename(target_type, u1, u2_or_gid):
     if target_type == "group":
         return os.path.join(MSG_DIR, f"group_{u2_or_gid}.json")
     else:
-        # Sort names to ensure alice+bob and bob+alice share the same file
+        # Sort names to ensure alice and bob & bob and alice share the same file
         participants = sorted([u1, u2_or_gid])
         return os.path.join(MSG_DIR, f"private_{participants[0]}_{participants[1]}.json")
 
