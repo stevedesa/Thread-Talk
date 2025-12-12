@@ -3,21 +3,25 @@
     "name": "squad",
     "members": [
       "alice",
-      "samarth"
+      "samarth",
+      "steve"
     ]
   },
   "8b0d999d": {
     "name": "fam",
     "members": [
       "samarth",
-      "alice"
+      "alice",
+      "steve"
     ]
   },
   "860e18ac": {
     "name": "sup",
     "members": [
       "pop",
-      "samarth"
+      "samarth",
+      "steve",
+      "alice"
     ]
   },
   "dcdae741": {

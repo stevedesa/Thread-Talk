@@ -6,21 +6,14 @@ import db_utils
 
 # --- Socket.IO + FastAPI setup ---
 
-# Create an async Socket.IO server that runs on ASGI and accepts all CORS origins.
-sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*') # Create async SocketIO server that runs on ASGI and accepts all CORS origins.
+app = FastAPI() # Base FastAPI app
+app = socketio.ASGIApp(sio, other_asgi_app=app) # Wrap FastAPI app with Socket.IO’s ASGI adapter so both live together
 
-# Base FastAPI app (we can still use normal HTTP routes if we want).
-app = FastAPI()
-
-# Wrap the FastAPI app with Socket.IO’s ASGI adapter so both live together.
-app = socketio.ASGIApp(sio, other_asgi_app=app)
-
-# --- In‑memory connection tracking ---
-# These are just simple maps we keep in memory to know who's online.
+# --- Connection state tracking ---
 
 connected_users = {}  # username -> sid (Socket.IO session ID)
 sid_to_user = {}      # sid -> username
-
 
 # --- Connection lifecycle ---
 
@@ -28,7 +21,6 @@ sid_to_user = {}      # sid -> username
 async def connect(sid, environ):
     # Runs whenever a new client connects via Socket.IO
     print(f"Connected: {sid}")
-
 
 @sio.event
 async def disconnect(sid):
@@ -47,9 +39,8 @@ async def disconnect(sid):
 async def login(sid, data):
     """
     Simple login endpoint.
-
-    - If the user does not exist, we auto‑register them.
-    - On success, we return:
+    If the user does not exist, we auto register them.
+    On success, we return:
       - list of all public users
       - groups that this user is a member of
     """
@@ -84,9 +75,7 @@ async def login(sid, data):
             "groups": my_groups,
         }
 
-    # Wrong password (or user not found but not auto‑registered for some reason)
     return {"status": "error", "msg": "Invalid credentials"}
-
 
 # --- Chat history & messaging ---
 
@@ -94,12 +83,6 @@ async def login(sid, data):
 async def fetch_history(sid, data):
     """
     Fetch message history.
-
-    Expected data:
-      {
-        "targetType": "private" | "group",
-        "targetId": "bob" | "some-group-id"
-      }
     """
     user = sid_to_user[sid]
     history = db_utils.load_history(
@@ -109,33 +92,24 @@ async def fetch_history(sid, data):
     )
     return history
 
-
 @sio.event
 async def send_message(sid, data):
     """
     Send a message either to:
       - a single user (private), or
       - a group.
-
-    Expected data:
-      {
-        "targetType": "private" | "group",
-        "targetId": "username-or-group-id",
-        "text": "message text"
-      }
     """
     sender = sid_to_user[sid]
     target_type = data['targetType']  # "private" | "group"
     target_id = data['targetId']      # username | group_id
     text = data['text']
 
-    # Persist the message somewhere (file/db managed by db_utils)
+    # Persist the message
     msg_obj = db_utils.save_message(target_type, sender, target_id, text)
 
     # Common payload for all recipients
     response = {
-        # For private chats, we treat the "conversation id" as the sender,
-        # for group chats it'll be the group id.
+        # For private chats, we treat the "conversation id" as the sender, for group chats it'll be the group id.
         "targetId": target_id if target_type == 'group' else sender,
         "from": sender,
         "text": text,
@@ -144,14 +118,14 @@ async def send_message(sid, data):
     }
 
     if target_type == 'private':
-        # Echo back to sender (with the actual target as targetId)
+        # Echo back to sender
         await sio.emit(
             'receive_message',
             {**response, "targetId": target_id},
             to=sid
         )
 
-        # If the other user is online, send it to them as well
+        # If other user is online, send it to them as well
         if target_id in connected_users:
             await sio.emit(
                 'receive_message',
@@ -188,14 +162,11 @@ async def send_message(sid, data):
 async def create_new_group(sid, data):
     """
     Create a new group owned by the current user.
-
-    Expected data:
-      { "name": "Cool Group Name" }
     """
     creator = sid_to_user[sid]
     gid, g_data = db_utils.create_group(data['name'], creator)
 
-    # Let the creator know the group is ready on the server
+    # Let creator know group is ready on the server
     await sio.emit(
         'group_created',
         {"gid": gid, "name": g_data['name'], "members": g_data['members']},
@@ -207,12 +178,6 @@ async def create_new_group(sid, data):
 async def add_member(sid, data):
     """
     Add a user to an existing group.
-
-    Expected data:
-      {
-        "gid": "group-id",
-        "username": "new-member-username"
-      }
     """
     gid = data['gid']
     new_user = data['username']
