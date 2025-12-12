@@ -28,6 +28,10 @@ function App() {
   const [newGroupName, setNewGroupName] = useState('');
   const [userToAdd, setUserToAdd] = useState('');
 
+  // UI State for Members Popup
+  const [showMembers, setShowMembers] = useState(false);
+
+
   // Refs
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -278,10 +282,19 @@ function App() {
         {activeChat ? (
           <>
             <div className="flex justify-between items-center border-b border-gray-700 pb-4 mb-4">
-              <div>
+              <div className="flex items-center gap-4">
                 <h3 className="text-xl font-bold">
                   {activeChat.type === 'group' ? `Group: ${myGroups[activeChat.id]?.name}` : `Chat: ${activeChat.id}`}
                 </h3>
+                {/* MEMBERS BUTTON */}
+                {activeChat.type === 'group' && (
+                  <button
+                    onClick={() => setShowMembers(true)}
+                    className="bg-gray-700 px-3 py-1 rounded hover:bg-gray-600 text-sm"
+                  >
+                    Members
+                  </button>
+                )}
               </div>
 
               {/* Add User to Group */}
@@ -302,6 +315,33 @@ function App() {
                 </div>
               )}
             </div>
+
+            {/* MEMBERS POPUP */}
+            {showMembers && activeChat?.type === 'group' && (
+              <div className="absolute inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                <div className="bg-gray-800 p-6 rounded-xl shadow-xl w-80">
+                  <h3 className="text-xl font-bold mb-4">Members</h3>
+
+                  <div className="flex flex-col gap-2 max-h-60 overflow-y-auto">
+                    {myGroups[activeChat.id]?.members?.map((m) => (
+                      <div
+                        key={m}
+                        className="bg-gray-700 px-3 py-2 rounded text-gray-100"
+                      >
+                        {m}
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setShowMembers(false)}
+                    className="mt-4 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Chat History */}
             <div
