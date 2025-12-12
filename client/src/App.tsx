@@ -280,8 +280,9 @@ function App() {
         <div>
           <h4 className="text-lg font-semibold mb-2 flex items-center justify-between">
             <span>Groups</span>
-            {/* static unread badge placeholder */}
-            <span className="text-sm bg-blue-600 text-white px-2 py-0.5 rounded">1</span>
+            <span className="text-sm bg-red-600 text-white px-2 py-0.5 rounded">
+              {Object.keys(myGroups).length}
+            </span>
           </h4>
           <div className="flex flex-col gap-2">
             {Object.values(myGroups).map((g) => (
@@ -292,8 +293,11 @@ function App() {
                   activeChat?.id === g.gid ? 'bg-gray-700 font-semibold' : ''
                 }`}
               >
-                <div className="flex justify-between items-center">
-                  <span className="truncate"># {g.name}</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-red-600 flex items-center justify-center text-white font-semibold">
+                    {g.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <span className="truncate">{g.name}</span>
                 </div>
               </div>
             ))}
@@ -321,7 +325,6 @@ function App() {
         <div>
           <h4 className="text-lg font-semibold mb-2 flex items-center justify-between">
             <span>Users</span>
-            {/* static unread badge placeholder */}
             <span className="text-sm bg-blue-600 text-white px-2 py-0.5 rounded">
               {usersList.filter((u) => u !== username).length}
             </span>
@@ -338,11 +341,10 @@ function App() {
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    {/* initials avatar */}
                     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
                       {u.slice(0, 1).toUpperCase()}
                     </div>
-                    <span className="truncate">@ {u}</span>
+                    <span className="truncate">{u}</span>
                   </div>
                 </div>
               ))}
