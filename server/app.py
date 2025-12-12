@@ -12,7 +12,7 @@ app = socketio.ASGIApp(sio, other_asgi_app=app) # Wrap FastAPI app with Socket.I
 
 # --- Connection state tracking ---
 
-connected_users = {}  # username -> sid (Socket.IO session ID)
+connected_users = {}  # username -> sid (socketio session id)
 sid_to_user = {}      # sid -> username
 
 # --- Connection lifecycle ---
@@ -38,11 +38,7 @@ async def disconnect(sid):
 @sio.event
 async def login(sid, data):
     """
-    Simple login endpoint.
-    If the user does not exist, we auto register them.
-    On success, we return:
-      - list of all public users
-      - groups that this user is a member of
+    Simple login. If the user does not exist, we auto register them.
     """
     users = db_utils.get_users()
     u, p = data.get('username'), data.get('password')
@@ -100,7 +96,7 @@ async def send_message(sid, data):
       - a group.
     """
     sender = sid_to_user[sid]
-    target_type = data['targetType']  # "private" | "group"
+    target_type = data['targetType']  # private | group
     target_id = data['targetId']      # username | group_id
     text = data['text']
 
@@ -109,7 +105,7 @@ async def send_message(sid, data):
 
     # Common payload for all recipients
     response = {
-        # For private chats, we treat the "conversation id" as the sender, for group chats it'll be the group id.
+        # For private chats, we treat the conversation id as the sender and for group chats it'll be the group id.
         "targetId": target_id if target_type == 'group' else sender,
         "from": sender,
         "text": text,
