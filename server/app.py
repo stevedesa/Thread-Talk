@@ -132,6 +132,17 @@ async def answer_call(sid, data):
         }, to=connected_users[target])
 
 @sio.event
+async def reject_call(sid, data):
+    # data: { target: 'bob' }
+    caller = sid_to_user[sid]
+    target = data['target']
+
+    if target in connected_users:
+        await sio.emit('call_rejected', {
+            "from": caller
+        }, to=connected_users[target])
+
+@sio.event
 async def ice_candidate(sid, data):
     target = data['target']
     if target in connected_users:
