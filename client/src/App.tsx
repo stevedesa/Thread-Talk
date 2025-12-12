@@ -1,52 +1,94 @@
+// ============================================================
+// React & Socket.io Imports
+// ============================================================
+// useEffect / useState — React state and lifecycle
+// useRef — reference to DOM nodes (for scroll control)
+// useCallback — memoized function
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
 import './index.css';
 
+
+// ============================================================
+// Socket Initialization
+// ============================================================
+// Create a socket connection instance but prevent auto-connect.
+// Client will explicitly connect after login.
 const socket: Socket = io('http://localhost:8000', {
   transports: ['websocket'],
   autoConnect: false
 });
 
-// Types
-type ChatMsg = { from: string; text: string; ts: number; timeString: string;};
+// ============================================================
+// Type Definitions
+// ============================================================
+// ChatMsg: structure of each message displayed in chat history
+type ChatMsg = { from: string; text: string; ts: number; timeString: string; };
+
+// Group: stored group object returned from server
 type Group = { gid: string; name: string; members: string[] };
 
+
 function App() {
-  // Auth State
+  // ==========================================================
+  // Authentication State
+  // ==========================================================
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
-  // Data State
+  // ==========================================================
+  // Data State (Users + Groups)
+  // ==========================================================
   const [usersList, setUsersList] = useState<string[]>([]);
   const [myGroups, setMyGroups] = useState<Record<string, Group>>({});
 
-  // UI State
+  // ==========================================================
+  // UI State for Chat
+  // ==========================================================
+  // activeChat: determines which chat (private or group) is open
   const [activeChat, setActiveChat] = useState<{ type: 'private' | 'group'; id: string } | null>(null);
+
+  // chatHistory: stores messages for currently opened chat
   const [chatHistory, setChatHistory] = useState<ChatMsg[]>([]);
+
+  // message: current text typed in chat input
   const [message, setMessage] = useState('');
+
+  // newGroupName: name input used when creating a new group
   const [newGroupName, setNewGroupName] = useState('');
+
+  // userToAdd: username input for adding members to a group
   const [userToAdd, setUserToAdd] = useState('');
 
-  // UI State for Members Popup
+  // ==========================================================
+  // UI State for Members Popup Modal
+  // ==========================================================
   const [showMembers, setShowMembers] = useState(false);
 
 
-  // Refs
+  // ==========================================================
+  // DOM References
+  // ==========================================================
+  // chatContainerRef: reference to chat div to auto-scroll on new messages
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // auto-scroll chat to bottom
+  // ==========================================================
+  // Auto-scroll behavior for chat messages
+  // ==========================================================
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, []);
 
-  // socket setup & listeners
+  // ==========================================================
+  // Socket Setup & Incoming Event Listeners
+  // ==========================================================
   useEffect(() => {
     socket.on('connect', () => console.log('Connected'));
 
-    // Incoming messages
+    // When receiving a message from server
     socket.on('receive_message', (data: any) => {
       const timestamp = data.timestamp || Date.now();
       const msg: ChatMsg = { 
@@ -56,18 +98,20 @@ function App() {
         timeString: formatTime(timestamp)
       };
 
+      // Only append message to currently active chat
       if (activeChat && data.targetId === activeChat.id) {
         setChatHistory((prev) => [...prev, msg]);
         setTimeout(scrollToBottom, 50);
       }
     });
 
-    // Group updates
+    // When a group is created
     socket.on('group_created', (group: any) => {
       const g: Group = { gid: group.gid, name: group.name, members: group.members || [] };
       setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
     });
 
+    // When a member is added to a group
     socket.on('member_added', (data: { group: any }) => {
       if (data.group) {
         const g: Group = { gid: data.group.gid, name: data.group.name, members: data.group.members || [] };
@@ -75,8 +119,9 @@ function App() {
       }
     });
     
+    
+    // Cleanup event listeners when component unmounts or dependencies change
     return () => {
-      // remove listeners we added
       socket.off('connect');
       socket.off('receive_message');
       socket.off('group_created');
@@ -84,11 +129,16 @@ function App() {
     };
   }, [activeChat, username, scrollToBottom]);
 
-  // Whenever activeChat changes, fetch history
+  // ==========================================================
+  // Fetch Chat History when switching chats
+  // ==========================================================
   useEffect(() => {
     if (!activeChat) return;
+
+    // Clear old history
     setChatHistory([]);
-    // fetch history
+
+    // Request chat history from server
     socket.emit('fetch_history', { targetType: activeChat.type, targetId: activeChat.id }, (history: any[]) => {
       const msgs = history.map((m) => ({ 
         from: m.from, 
@@ -96,25 +146,34 @@ function App() {
         ts: m.timestamp || Date.now(),
         timeString: formatTime(m.timestamp || Date.now())
       }));
+
       setChatHistory(msgs);
       setTimeout(scrollToBottom, 50);
     });
   }, [activeChat, scrollToBottom]);
 
-  // --- Actions ---
-
+  // ==========================================================
+  // Authentication Actions
+  // ==========================================================
   const handleLogin = () => {
     socket.connect();
+
+    // Send login request to server
     socket.emit('login', { username, password }, (res: any) => {
       if (res.status === 'ok') {
         setIsLoggedIn(true);
+
+        // Load users list
         setUsersList(res.users || []);
-    
+
+        // Normalize received groups
         const groupsRaw = res.groups || {};
         const normalizedGroups: Record<string, Group> = {};
+
         Object.entries(groupsRaw).forEach(([gid, group]: [string, any]) => {
           normalizedGroups[gid] = { gid, name: group.name, members: group.members || [] };
         });
+
         setMyGroups(normalizedGroups);
       } else {
         alert(res.msg);
@@ -122,17 +181,26 @@ function App() {
     });
   };
 
+  // ==========================================================
+  // Open Chat (private or group)
+  // ==========================================================
   const openChat = (type: 'private' | 'group', id: string) => {
     setActiveChat({ type, id });
     setChatHistory([]);
   };
 
+  // ==========================================================
+  // Utility: Format timestamp into readable HH:MM format
+  // ==========================================================
   const formatTime = (ts: number) => {
     const timestampInMs = ts < 10000000000 ? ts * 1000 : ts;
     const date = new Date(timestampInMs);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // ==========================================================
+  // Send Message
+  // ==========================================================
   const sendMessage = () => {
     if (!message.trim() || !activeChat) return;
 
@@ -145,23 +213,28 @@ function App() {
     socket.emit('send_message', payload);
     setMessage('');
   };
-
+  
+  // ==========================================================
+  // Group Management — Create a New Group
+  // ==========================================================
   const createGroup = () => {
     if (!newGroupName.trim()) return;
     socket.emit('create_new_group', { name: newGroupName.trim() });
     setNewGroupName('');
   };
-
+  
+  // ==========================================================
+  // Group Management — Add a User to Current Group
+  // ==========================================================
   const addUserToGroup = () => {
     if (!activeChat || activeChat.type !== 'group' || !userToAdd.trim()) return;
     socket.emit('add_member', { gid: activeChat.id, username: userToAdd.trim() });
     setUserToAdd('');
   };
 
-  const handleTextareaInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value);
-  };
-
+  // ==========================================================
+  // LOGIN SCREEN
+  // ==========================================================
   if (!isLoggedIn) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-900">
@@ -194,6 +267,9 @@ function App() {
     );
   }
 
+  // ==========================================================
+  // MAIN APPLICATION UI
+  // ==========================================================
   return (
     <div className="flex h-screen font-sans text-gray-100 bg-gray-900">
 
@@ -316,7 +392,7 @@ function App() {
               )}
             </div>
 
-            {/* MEMBERS POPUP */}
+            {/* Members Popup */}
             {showMembers && activeChat?.type === 'group' && (
               <div className="absolute inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
                 <div className="bg-gray-800 p-6 rounded-xl shadow-xl w-80">

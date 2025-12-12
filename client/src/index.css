@@ -1,3 +1,4 @@
+/* Tailwind CSS imports: base reset, component styles, and utility classes */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
