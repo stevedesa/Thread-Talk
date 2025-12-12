@@ -28,16 +28,11 @@ function App() {
   const [newGroupName, setNewGroupName] = useState('');
   const [userToAdd, setUserToAdd] = useState('');
 
-  // Typing state: map user -> boolean
-  const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
-
   // Refs
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const typingTimeoutRef = useRef<number | null>(null);
-  const lastEmitTypingRef = useRef<number>(0);
 
-  // Helper: auto-scroll chat to bottom
+  // auto-scroll chat to bottom
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -65,27 +60,21 @@ function App() {
     });
 
     // Group updates
-    socket.on('group_created', (group: Group) => {
-      setMyGroups((prev) => ({ ...prev, [group.gid]: group }));
+    socket.on('group_created', (group: any) => {
+      const g: Group = { gid: group.gid, name: group.name, members: group.members || [] };
+      setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
     });
-
-    socket.on('member_added', (data: { group: Group }) => {
+    
+    socket.on('member_added', (data: { group: any }) => {
       if (data.group) {
-        setMyGroups((prev) => ({ ...prev, [data.group.gid]: data.group }));
+        const g: Group = { gid: data.group.gid, name: data.group.name, members: data.group.members || [] };
+        setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
       }
     });
-
-    socket.on('group_joined', (group: Group) => {
-      setMyGroups((prev) => ({ ...prev, [group.gid]: group }));
-    });
-
-    socket.on('typing', (payload: { from: string; to: string; isTyping: boolean }) => {
-      if (!activeChat) return;
-      if (activeChat.type !== 'private') return;
-      const otherUser = activeChat.id;
-      if (payload.from === otherUser && payload.to === username) {
-        setTypingUsers((prev) => ({ ...prev, [payload.from]: payload.isTyping }));
-      }
+    
+    socket.on('group_joined', (group: any) => {
+      const g: Group = { gid: group.gid, name: group.name, members: group.members || [] };
+      setMyGroups((prev) => ({ ...prev, [g.gid]: g }));
     });
     
     return () => {
@@ -93,15 +82,13 @@ function App() {
       socket.off('connect');
       socket.off('receive_message');
       socket.off('group_created');
-      socket.off('typing');
     };
   }, [activeChat, username, scrollToBottom]);
 
-  // Whenever activeChat changes, fetch history and reset typing flags
+  // Whenever activeChat changes, fetch history
   useEffect(() => {
     if (!activeChat) return;
     setChatHistory([]);
-    setTypingUsers({});
     // fetch history
     socket.emit('fetch_history', { targetType: activeChat.type, targetId: activeChat.id }, (history: any[]) => {
       const msgs = history.map((m) => ({ 
@@ -115,30 +102,6 @@ function App() {
     });
   }, [activeChat, scrollToBottom]);
 
-  useEffect(() => {
-    if (!activeChat) return;
-    if (activeChat.type !== 'private') return;
-
-    const now = Date.now();
-    const THROTTLE_MS = 800; // don't spam server
-    if (now - lastEmitTypingRef.current > THROTTLE_MS) {
-      socket.emit('typing', { to: activeChat.id, from: username, isTyping: message.trim().length > 0 });
-      lastEmitTypingRef.current = now;
-    }
-
-    if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = window.setTimeout(() => {
-      socket.emit('typing', { to: activeChat.id, from: username, isTyping: false });
-    }, 1500);
-
-    return () => {
-      if (typingTimeoutRef.current) {
-        window.clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-    };
-  }, [message]);
-
   // --- Actions ---
 
   const handleLogin = () => {
@@ -147,7 +110,13 @@ function App() {
       if (res.status === 'ok') {
         setIsLoggedIn(true);
         setUsersList(res.users || []);
-        setMyGroups(res.groups || {});
+    
+        const groupsRaw = res.groups || {};
+        const normalizedGroups: Record<string, Group> = {};
+        Object.entries(groupsRaw).forEach(([gid, group]: [string, any]) => {
+          normalizedGroups[gid] = { gid, name: group.name, members: group.members || [] };
+        });
+        setMyGroups(normalizedGroups);
       } else {
         alert(res.msg);
       }
@@ -177,10 +146,6 @@ function App() {
     socket.emit('send_message', payload);
     setMessage('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    
-    if (activeChat.type === 'private') {
-      socket.emit('typing', { to: activeChat.id, from: username, isTyping: false });
-    }
   };
 
   const createGroup = () => {
@@ -338,10 +303,6 @@ function App() {
                 <h3 className="text-xl font-bold">
                   {activeChat.type === 'group' ? `Group: ${myGroups[activeChat.id]?.name}` : `Chat: ${activeChat.id}`}
                 </h3>
-                {/* Typing indicator (private chats only) */}
-                {activeChat.type === 'private' && typingUsers[activeChat.id] && (
-                  <div className="text-sm text-green-300 mt-1">{activeChat.id} is typing...</div>
-                )}
               </div>
             </div>
 
@@ -366,11 +327,6 @@ function App() {
                 );
               })}
             </div>
-
-            {/* Typing indicator below chat */}
-            {activeChat.type === 'private' && typingUsers[activeChat.id] && (
-              <div className="text-sm text-green-300 mt-2">{activeChat.id} is typing...</div>
-            )}
 
             {/* Input Box */}
             <div className="mt-4 flex gap-3 items-end">

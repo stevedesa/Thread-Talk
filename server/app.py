@@ -10,8 +10,8 @@ app = FastAPI()
 app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 # Maps
-connected_users = {}
-sid_to_user = {}
+connected_users = {} # username -> sid mapping
+sid_to_user = {}    # sid -> username mapping
 
 @sio.event
 async def connect(sid, environ):
@@ -21,8 +21,9 @@ async def connect(sid, environ):
 async def disconnect(sid):
     if sid in sid_to_user:
         user = sid_to_user.pop(sid)
-        connected_users.pop(user, None)
-        print(f"Disconnected: {user}")
+        if connected_users.get(user) == sid:
+            connected_users.pop(user, None)
+            print(f"Disconnected: {user}")
 
 # --- Auth & Init ---
 @sio.event
@@ -85,9 +86,14 @@ async def send_message(sid, data):
     elif target_type == 'group':
         # Get members
         groups = db_utils.get_groups()
+        
+        await sio.emit('receive_message', {**response, "targetId": target_id}, to=sid)
+
+        # Send to other members
         if target_id in groups:
             for member in groups[target_id]['members']:
-                if member in connected_users:
+                # Send to member if online and NOT the sender (we handled sender above)
+                if member in connected_users and member != sender:
                     await sio.emit('receive_message', {**response, "targetId": target_id}, to=connected_users[member])
 
 # --- Group Management ---
@@ -96,18 +102,38 @@ async def create_new_group(sid, data):
     creator = sid_to_user[sid]
     gid, g_data = db_utils.create_group(data['name'], creator)
 
-    # Notify creator
-    await sio.emit('group_created', {"gid": gid, "name": g_data['name'], "members": g_data['members']}, to=sid)
+    # Notify the creator
+    await sio.emit(
+        'group_created',
+        {"gid": gid, "name": g_data['name'], "members": g_data['members']},
+        to=sid
+    )
 
 @sio.event
 async def add_member(sid, data):
     gid = data['gid']
     new_user = data['username']
     if db_utils.add_member_to_group(gid, new_user):
-        # Notify new user if they are online
         groups = db_utils.get_groups()
+        group = groups[gid]
+
+        # Notify the new user, if online, so they see this group
         if new_user in connected_users:
-            await sio.emit('group_created', {"gid": gid, "name": groups[gid]['name'], "members": groups[gid]['members']}, to=connected_users[new_user])
+            await sio.emit(
+                'group_created',
+                {"gid": gid, "name": group['name'], "members": group['members']},
+                to=connected_users[new_user]
+            )
+
+        # Notify existing members (including creator) that the member list changed
+        for member in group['members']:
+            if member in connected_users:
+                await sio.emit(
+                    'member_added',
+                    {"group": {"gid": gid, "name": group['name'], "members": group['members']}},
+                    to=connected_users[member]
+                )
+
         return {"status": "ok"}
     return {"status": "error"}
 
