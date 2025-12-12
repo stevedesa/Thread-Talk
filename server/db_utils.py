@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from datetime import datetime
 
 DATA_DIR = "data"
 MSG_DIR = os.path.join(DATA_DIR, "messages")
@@ -58,7 +59,7 @@ def _get_chat_filename(target_type, u1, u2_or_gid):
 def save_message(target_type, sender, target_id, text):
     filepath = _get_chat_filename(target_type, sender, target_id)
     history = _load_json(filepath, [])
-    msg = {"from": sender, "text": text, "timestamp": str(uuid.uuid4())} # Simple unique ID
+    msg = {"from": sender, "text": text, "timestamp": datetime.now().timestamp()}
     history.append(msg)
     _save_json(filepath, history)
     return msg

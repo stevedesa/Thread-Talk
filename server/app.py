@@ -1,6 +1,7 @@
 import socketio
 import uvicorn
 from fastapi import FastAPI
+from datetime import datetime
 import db_utils
 
 # Setup
@@ -9,8 +10,8 @@ app = FastAPI()
 app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 # Maps
-connected_users = {} # username -> sid
-sid_to_user = {}     # sid -> username
+connected_users = {}
+sid_to_user = {}
 
 @sio.event
 async def connect(sid, environ):
@@ -29,7 +30,7 @@ async def login(sid, data):
     users = db_utils.get_users()
     u, p = data.get('username'), data.get('password')
     
-    # Auto-register if user doesn't exist (for simplicity based on your file DB request)
+    # Auto-register if user doesn't exist
     if u not in users:
         users[u] = p
         db_utils._save_json(db_utils.USERS_FILE, users)
@@ -58,23 +59,24 @@ async def fetch_history(sid, data):
 @sio.event
 async def send_message(sid, data):
     sender = sid_to_user[sid]
-    target_type = data['targetType'] # 'private' or 'group'
-    target_id = data['targetId']     # username or group_id
+    target_type = data['targetType'] # private/group
+    target_id = data['targetId']     # username/group_id
     text = data['text']
 
     # Save to file
     msg_obj = db_utils.save_message(target_type, sender, target_id, text)
 
-    # Emit to recipient(s)
+    # Emit to recipients
     response = {
         "targetId": target_id if target_type == 'group' else sender, 
         "from": sender, 
         "text": text,
+        "timestamp": msg_obj.get("timestamp", datetime.now().timestamp()),
         "type": target_type
     }
 
     if target_type == 'private':
-        # Send to sender (so they see it)
+        # Send to sender
         await sio.emit('receive_message', {**response, "targetId": target_id}, to=sid)
         # Send to receiver
         if target_id in connected_users:
@@ -86,7 +88,6 @@ async def send_message(sid, data):
         if target_id in groups:
             for member in groups[target_id]['members']:
                 if member in connected_users:
-                    # 'targetId' helps client know which chat window to update
                     await sio.emit('receive_message', {**response, "targetId": target_id}, to=connected_users[member])
 
 # --- Group Management ---
@@ -94,7 +95,8 @@ async def send_message(sid, data):
 async def create_new_group(sid, data):
     creator = sid_to_user[sid]
     gid, g_data = db_utils.create_group(data['name'], creator)
-    # Notify creator (and potentially others if you implement invite immediately)
+
+    # Notify creator
     await sio.emit('group_created', {"gid": gid, "name": g_data['name'], "members": g_data['members']}, to=sid)
 
 @sio.event
@@ -102,7 +104,7 @@ async def add_member(sid, data):
     gid = data['gid']
     new_user = data['username']
     if db_utils.add_member_to_group(gid, new_user):
-        # Notify the new user if they are online
+        # Notify new user if they are online
         groups = db_utils.get_groups()
         if new_user in connected_users:
             await sio.emit('group_created', {"gid": gid, "name": groups[gid]['name'], "members": groups[gid]['members']}, to=connected_users[new_user])
@@ -110,7 +112,7 @@ async def add_member(sid, data):
     return {"status": "error"}
 
 # --- Voice Signaling (P2P Relay) ---
-# Relay these events directly between two users
+
 @sio.event
 async def call_user(sid, data):
     # data: { target: 'bob', offer: SDP }
@@ -150,7 +152,7 @@ async def end_call(sid, data):
     if target in connected_users:
         from_user = sid_to_user.get(sid, "Unknown")
 
-        # Notify the target user that the call has ended
+        # Notify target user that call has ended
         await sio.emit('call_ended', {
             "from": from_user
         }, to=connected_users[target])

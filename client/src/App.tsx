@@ -56,16 +56,17 @@ function App() {
 
     // Incoming messages
     socket.on('receive_message', (data: any) => {
-      // Normalize message -> include ts if not provided
-      const ts = data.ts ?? Date.now();
-      const msg: ChatMsg = { from: data.from, text: data.text, ts, timeString: formatTime(ts)};
+      const timestamp = data.timestamp || Date.now();
+      const msg: ChatMsg = { 
+        from: data.from, 
+        text: data.text, 
+        ts: timestamp,
+        timeString: formatTime(timestamp)
+      };
 
-      // update only if belongs to active chat OR if you'd like, store globally (here we only show when open)
       if (activeChat && data.targetId === activeChat.id) {
         setChatHistory((prev) => [...prev, msg]);
         setTimeout(scrollToBottom, 50);
-      } else {
-        // Could increment unread counters (placeholder static for now)
       }
     });
 
@@ -162,7 +163,12 @@ function App() {
     setTypingUsers({});
     // fetch history
     socket.emit('fetch_history', { targetType: activeChat.type, targetId: activeChat.id }, (history: any[]) => {
-      const msgs = history.map((m) => ({ from: m.from, text: m.text, ts: m.ts ?? Date.now(), timeString: formatTime(m.ts ?? Date.now()) }));
+      const msgs = history.map((m) => ({ 
+        from: m.from, 
+        text: m.text, 
+        ts: m.timestamp || Date.now(),
+        timeString: formatTime(m.timestamp || Date.now())
+      }));
       setChatHistory(msgs);
       setTimeout(scrollToBottom, 50);
     });
@@ -213,39 +219,24 @@ function App() {
   };
 
   const formatTime = (ts: number) => {
-    const date = new Date(ts);
+    const timestampInMs = ts < 10000000000 ? ts * 1000 : ts;
+    const date = new Date(timestampInMs);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   const sendMessage = () => {
     if (!message.trim() || !activeChat) return;
 
-    const ts = Date.now();
-
     const payload = {
       targetType: activeChat.type,
       targetId: activeChat.id,
       text: message.trim(),
-      ts
     };
-
+  
     socket.emit('send_message', payload);
-
-    // Add formatted time here
-    setChatHistory((prev) => [
-      ...prev,
-      {
-        from: username,
-        text: payload.text,
-        ts,
-        timeString: formatTime(ts)   // <-- store static formatted time
-      }
-    ]);
-
     setMessage('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    setTimeout(scrollToBottom, 50);
-
+    
     if (activeChat.type === 'private') {
       socket.emit('typing', { to: activeChat.id, from: username, isTyping: false });
     }
@@ -263,7 +254,6 @@ function App() {
     setUserToAdd('');
   };
 
-  // --- Voice logic kept as before (omitted here for brevity) ---
   const setupPeerConnection = async (targetUser: string) => {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
 
