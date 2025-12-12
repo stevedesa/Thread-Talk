@@ -111,59 +111,5 @@ async def add_member(sid, data):
         return {"status": "ok"}
     return {"status": "error"}
 
-# --- Voice Signaling (P2P Relay) ---
-
-@sio.event
-async def call_user(sid, data):
-    # data: { target: 'bob', offer: SDP }
-    caller = sid_to_user[sid]
-    target = data['target']
-    if target in connected_users:
-        await sio.emit('incoming_call', {
-            "from": caller,
-            "offer": data['offer']
-        }, to=connected_users[target])
-
-@sio.event
-async def answer_call(sid, data):
-    # data: { target: 'alice', answer: SDP }
-    target = data['target']
-    if target in connected_users:
-        await sio.emit('call_answered', {
-            "answer": data['answer']
-        }, to=connected_users[target])
-
-@sio.event
-async def reject_call(sid, data):
-    # data: { target: 'bob' }
-    caller = sid_to_user[sid]
-    target = data['target']
-
-    if target in connected_users:
-        await sio.emit('call_rejected', {
-            "from": caller
-        }, to=connected_users[target])
-
-@sio.event
-async def end_call(sid, data):
-    # data: { target: 'bob' }
-    target = data.get('target')
-
-    if target in connected_users:
-        from_user = sid_to_user.get(sid, "Unknown")
-
-        # Notify target user that call has ended
-        await sio.emit('call_ended', {
-            "from": from_user
-        }, to=connected_users[target])
-
-@sio.event
-async def ice_candidate(sid, data):
-    target = data['target']
-    if target in connected_users:
-        await sio.emit('ice_candidate', {
-            "candidate": data['candidate']
-        }, to=connected_users[target])
-
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

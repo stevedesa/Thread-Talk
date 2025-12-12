@@ -28,12 +28,6 @@ function App() {
   const [newGroupName, setNewGroupName] = useState('');
   const [userToAdd, setUserToAdd] = useState('');
 
-  // Voice State (kept as-is)
-  const [incomingCall, setIncomingCall] = useState<{ from: string; offer: any } | null>(null);
-  const [inCall, setInCall] = useState(false);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-
   // Typing state: map user -> boolean
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
 
@@ -81,7 +75,6 @@ function App() {
       }
     });
 
-    // Or if the server sends you joined event
     socket.on('group_joined', (group: Group) => {
       setMyGroups((prev) => ({ ...prev, [group.gid]: group }));
     });
@@ -94,65 +87,13 @@ function App() {
         setTypingUsers((prev) => ({ ...prev, [payload.from]: payload.isTyping }));
       }
     });
-
-    // Voice signals
-    socket.on('incoming_call', async (data) => {
-      setIncomingCall(data);
-    });
-
-    socket.on('call_answered', async (data) => {
-      if (pcRef.current) {
-        await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
-      }
-    });
-
-    socket.on("call_rejected", (data) => {
-      setInCall(false);
-
-      // Close peer connection if any
-      if (pcRef.current) {
-        pcRef.current.close();
-        pcRef.current = null;
-      }
-
-      alert(`Call was rejected by ${data.from}.`);
-    });
-
-    socket.on('call_ended', (data: { from: string }) => {
-        // Clean up local call
-        if (pcRef.current) {
-          pcRef.current.close();
-          pcRef.current = null;
-        }
-
-        if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach(track => track.stop());
-          localStreamRef.current = null;
-        }
-
-        setInCall(false);
-        setIncomingCall(null);
-
-        // Notify user
-        alert(`Call ended by ${data.from}`);
-      });
-
-    socket.on('ice_candidate', async (data) => {
-      if (pcRef.current && data.candidate) {
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    });
-
+    
     return () => {
       // remove listeners we added
       socket.off('connect');
       socket.off('receive_message');
       socket.off('group_created');
       socket.off('typing');
-      socket.off('incoming_call');
-      socket.off('call_answered');
-      socket.off('call_ended');
-      socket.off('ice_candidate');
     };
   }, [activeChat, username, scrollToBottom]);
 
@@ -252,74 +193,6 @@ function App() {
     if (!activeChat || activeChat.type !== 'group' || !userToAdd.trim()) return;
     socket.emit('add_member', { gid: activeChat.id, username: userToAdd.trim() });
     setUserToAdd('');
-  };
-
-  const setupPeerConnection = async (targetUser: string) => {
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit('ice_candidate', { target: targetUser, candidate: event.candidate });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      const audio = new Audio();
-      audio.srcObject = event.streams[0];
-      audio.play();
-    };
-
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-    localStreamRef.current = stream;
-    pcRef.current = pc;
-    return pc;
-  };
-
-  const startCall = async () => {
-    if (!activeChat || activeChat.type !== 'private') return;
-    const targetUser = activeChat.id;
-
-    const pc = await setupPeerConnection(targetUser);
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    socket.emit('call_user', { target: targetUser, offer });
-    setInCall(true);
-  };
-
-  const endCall = () => {
-    if (pcRef.current) {
-      pcRef.current.close();
-      pcRef.current = null;
-    }
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-      localStreamRef.current = null;
-    }
-
-    setInCall(false);
-    setIncomingCall(null);
-
-    // Notify the other user
-    if (activeChat?.type === 'private') {
-      socket.emit('end_call', { target: activeChat.id });
-    }
-  };
-
-  const answerCall = async () => {
-    if (!incomingCall) return;
-    const pc = await setupPeerConnection(incomingCall.from);
-
-    await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-
-    socket.emit('answer_call', { target: incomingCall.from, answer });
-    setIncomingCall(null);
-    setInCall(true);
-    openChat('private', incomingCall.from);
   };
 
   // textarea auto resize
@@ -470,32 +343,6 @@ function App() {
                   <div className="text-sm text-green-300 mt-1">{activeChat.id} is typing...</div>
                 )}
               </div>
-
-              <div className="flex items-center gap-3">
-                {activeChat.type === 'private' && !inCall && (
-                  <button
-                    onClick={startCall}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors shadow"
-                  >
-                    Call User
-                  </button>
-                )}
-
-                {inCall && (
-                  <div className="flex gap-2">
-                    <button disabled className="bg-gray-400 px-4 py-2 rounded-lg text-white cursor-not-allowed">
-                      Call in Progress...
-                    </button>
-                    <button
-                      onClick={endCall}
-                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors shadow"
-                    >
-                      End Call
-                    </button>
-                  </div>
-                )}
-
-              </div>
             </div>
 
             {/* Chat History */}
@@ -568,32 +415,6 @@ function App() {
           <div className="text-gray-400 text-center mt-20 text-lg">Select a chat to begin</div>
         )}
       </div>
-
-      {/* INCOMING CALL MODAL */}
-      {incomingCall && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-gray-800 rounded-xl p-6 shadow-2xl border border-red-600 w-96 text-center text-gray-100">
-            <h4 className="text-lg font-bold mb-4">Incoming call from {incomingCall.from}</h4>
-            <div className="flex justify-center gap-4">
-              <button
-                onClick={answerCall}
-                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors shadow"
-              >
-                Accept
-              </button>
-              <button
-                onClick={() => {
-                  socket.emit("reject_call", { target: incomingCall.from });
-                  setIncomingCall(null);
-                }}
-                className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition-colors shadow"
-              >
-                Reject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
