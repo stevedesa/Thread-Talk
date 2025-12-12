@@ -105,7 +105,7 @@ async def add_member(sid, data):
         # Notify the new user if they are online
         groups = db_utils.get_groups()
         if new_user in connected_users:
-             await sio.emit('group_created', {"gid": gid, "name": groups[gid]['name'], "members": groups[gid]['members']}, to=connected_users[new_user])
+            await sio.emit('group_created', {"gid": gid, "name": groups[gid]['name'], "members": groups[gid]['members']}, to=connected_users[new_user])
         return {"status": "ok"}
     return {"status": "error"}
 
@@ -140,6 +140,19 @@ async def reject_call(sid, data):
     if target in connected_users:
         await sio.emit('call_rejected', {
             "from": caller
+        }, to=connected_users[target])
+
+@sio.event
+async def end_call(sid, data):
+    # data: { target: 'bob' }
+    target = data.get('target')
+
+    if target in connected_users:
+        from_user = sid_to_user.get(sid, "Unknown")
+
+        # Notify the target user that the call has ended
+        await sio.emit('call_ended', {
+            "from": from_user
         }, to=connected_users[target])
 
 @sio.event

@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import io, { Socket } from 'socket.io-client';
-import './index.css'; // tailwind or your css
+import './index.css';
 
 const socket: Socket = io('http://localhost:8000', {
   transports: ['websocket'],
@@ -74,7 +74,6 @@ function App() {
       setMyGroups((prev) => ({ ...prev, [group.gid]: group }));
     });
 
-    // Add this listener alongside the 'group_created' one
     socket.on('member_added', (data: { group: Group }) => {
       if (data.group) {
         setMyGroups((prev) => ({ ...prev, [data.group.gid]: data.group }));
@@ -86,12 +85,9 @@ function App() {
       setMyGroups((prev) => ({ ...prev, [group.gid]: group }));
     });
 
-    // Typing indicator (server should forward typing events to other clients)
     socket.on('typing', (payload: { from: string; to: string; isTyping: boolean }) => {
-      // Only care about typing events for the chat we're currently in
       if (!activeChat) return;
       if (activeChat.type !== 'private') return;
-      // only set typing when the event is for the currently active private chat and not from me
       const otherUser = activeChat.id;
       if (payload.from === otherUser && payload.to === username) {
         setTypingUsers((prev) => ({ ...prev, [payload.from]: payload.isTyping }));
@@ -121,6 +117,25 @@ function App() {
       alert(`Call was rejected by ${data.from}.`);
     });
 
+    socket.on('call_ended', (data: { from: string }) => {
+        // Clean up local call
+        if (pcRef.current) {
+          pcRef.current.close();
+          pcRef.current = null;
+        }
+
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => track.stop());
+          localStreamRef.current = null;
+        }
+
+        setInCall(false);
+        setIncomingCall(null);
+
+        // Notify user
+        alert(`Call ended by ${data.from}`);
+      });
+
     socket.on('ice_candidate', async (data) => {
       if (pcRef.current && data.candidate) {
         await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -135,9 +150,9 @@ function App() {
       socket.off('typing');
       socket.off('incoming_call');
       socket.off('call_answered');
+      socket.off('call_ended');
       socket.off('ice_candidate');
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChat, username, scrollToBottom]);
 
   // Whenever activeChat changes, fetch history and reset typing flags
@@ -147,14 +162,12 @@ function App() {
     setTypingUsers({});
     // fetch history
     socket.emit('fetch_history', { targetType: activeChat.type, targetId: activeChat.id }, (history: any[]) => {
-      // map/normalize history messages to ChatMsg with ts
       const msgs = history.map((m) => ({ from: m.from, text: m.text, ts: m.ts ?? Date.now(), timeString: formatTime(m.ts ?? Date.now()) }));
       setChatHistory(msgs);
       setTimeout(scrollToBottom, 50);
     });
   }, [activeChat, scrollToBottom]);
 
-  // Emit typing events when the local user is typing (private chats only)
   useEffect(() => {
     if (!activeChat) return;
     if (activeChat.type !== 'private') return;
@@ -166,7 +179,6 @@ function App() {
       lastEmitTypingRef.current = now;
     }
 
-    // Clear typing flag after a short idle timeout
     if (typingTimeoutRef.current) window.clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = window.setTimeout(() => {
       socket.emit('typing', { to: activeChat.id, from: username, isTyping: false });
@@ -178,7 +190,6 @@ function App() {
         typingTimeoutRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message]);
 
   // --- Actions ---
@@ -199,10 +210,8 @@ function App() {
   const openChat = (type: 'private' | 'group', id: string) => {
     setActiveChat({ type, id });
     setChatHistory([]);
-    // fetch_history handled by effect
   };
 
-    // format timestamp to readable time
   const formatTime = (ts: number) => {
     const date = new Date(ts);
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -220,7 +229,6 @@ function App() {
       ts
     };
 
-    // emit to server
     socket.emit('send_message', payload);
 
     // Add formatted time here
@@ -288,6 +296,26 @@ function App() {
 
     socket.emit('call_user', { target: targetUser, offer });
     setInCall(true);
+  };
+
+  const endCall = () => {
+    if (pcRef.current) {
+      pcRef.current.close();
+      pcRef.current = null;
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+
+    setInCall(false);
+    setIncomingCall(null);
+
+    // Notify the other user
+    if (activeChat?.type === 'private') {
+      socket.emit('end_call', { target: activeChat.id });
+    }
   };
 
   const answerCall = async () => {
@@ -376,8 +404,8 @@ function App() {
               <div
                 key={g.gid}
                 onClick={() => openChat('group', g.gid)}
-                className={`cursor-pointer px-3 py-2 rounded-lg transition-colors hover:bg-blue-700 ${
-                  activeChat?.id === g.gid ? 'bg-blue-600 font-semibold' : ''
+                className={`cursor-pointer px-3 py-2 rounded-lg transition-colors hover:bg-gray-700 ${
+                  activeChat?.id === g.gid ? 'bg-gray-700 font-semibold' : ''
                 }`}
               >
                 <div className="flex justify-between items-center">
@@ -396,7 +424,7 @@ function App() {
             />
             <button
               onClick={createGroup}
-              className="bg-blue-500 text-white px-3 rounded hover:bg-blue-600 transition-colors"
+              className="bg-gray-700 text-white px-3 py-2 rounded hover:bg-gray-500 transition-colors"
             >
               +
             </button>
@@ -421,8 +449,8 @@ function App() {
                 <div
                   key={u}
                   onClick={() => openChat('private', u)}
-                  className={`cursor-pointer px-3 py-2 rounded-lg transition-colors hover:bg-blue-100 flex justify-between items-center ${
-                    activeChat?.id === u ? 'bg-blue-200 font-semibold' : ''
+                  className={`cursor-pointer px-3 py-2 rounded-lg transition-colors hover:bg-gray-700 flex justify-between items-center ${
+                    activeChat?.id === u ? 'bg-gray-300 font-semibold text-gray-900' : ''
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -464,10 +492,19 @@ function App() {
                 )}
 
                 {inCall && (
-                  <button disabled className="bg-gray-400 px-4 py-2 rounded-lg text-white cursor-not-allowed">
-                    Call in Progress...
-                  </button>
+                  <div className="flex gap-2">
+                    <button disabled className="bg-gray-400 px-4 py-2 rounded-lg text-white cursor-not-allowed">
+                      Call in Progress...
+                    </button>
+                    <button
+                      onClick={endCall}
+                      className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors shadow"
+                    >
+                      End Call
+                    </button>
+                  </div>
                 )}
+
               </div>
             </div>
 
@@ -506,7 +543,7 @@ function App() {
                 value={message}
                 onChange={handleTextareaInput}
                 onKeyDown={handleTextareaKeyDown}
-                placeholder="Message... (Enter to send, Shift+Enter for newline)"
+                placeholder="Message... "
                 rows={1}
                 style={{ minHeight: 40 }}
               />
