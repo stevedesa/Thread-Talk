@@ -5,7 +5,8 @@
       "alice",
       "samarth",
       "steve",
-      "pop"
+      "pop",
+      "bob"
     ]
   },
   "8b0d999d": {
@@ -16,6 +17,13 @@
       "steve",
       "bob",
       "sam"
+    ]
+  },
+  "2e371c46": {
+    "name": "school",
+    "members": [
+      "alice",
+      "steve"
     ]
   }
 }

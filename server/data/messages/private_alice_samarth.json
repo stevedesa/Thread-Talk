@@ -1,37 +1,22 @@
 [
   {
-    "from": "alice",
-    "text": "naiky",
-    "timestamp": 1765525376.521623
-  },
-  {
-    "from": "alice",
-    "text": "asdasd",
-    "timestamp": 1765527610.397549
-  },
-  {
-    "from": "alice",
-    "text": "a",
-    "timestamp": 1765530108.456165
-  },
-  {
-    "from": "alice",
-    "text": "s",
-    "timestamp": 1765530108.577161
-  },
-  {
-    "from": "alice",
-    "text": "d",
-    "timestamp": 1765530109.56892
-  },
-  {
-    "from": "alice",
-    "text": "asd",
-    "timestamp": 1765530304.949328
-  },
-  {
     "from": "samarth",
     "text": "wassup",
     "timestamp": 1765575627.937476
+  },
+  {
+    "from": "alice",
+    "text": "hey",
+    "timestamp": 1765582461.484055
+  },
+  {
+    "from": "samarth",
+    "text": "how are you?",
+    "timestamp": 1765582598.091128
+  },
+  {
+    "from": "samarth",
+    "text": "you good?",
+    "timestamp": 1765582682.976062
   }
 ]
